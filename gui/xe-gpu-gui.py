@@ -7,7 +7,9 @@
 # for writes). Reads are unprivileged sysfs; no kernel poking here.
 import os, glob, subprocess, threading, collections, json, math, re, shutil, time, hashlib
 import gi
+import cairo
 gi.require_version("Gtk", "4.0")
+gi.require_foreign("cairo", "Context")
 gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, GLib, Gio, Gdk  # noqa: E402
 
@@ -738,10 +740,11 @@ def run_priv(args, parent, after=None):
     # pkexec sanitizes PATH (often no /usr/local/bin) -> use absolute paths.
     args = [HELPER_PATHS.get(args[0], args[0])] + list(args[1:])
     cmd = ["pkexec"]
-    # multi-GPU: pkexec strips the env, so pass the selected card's BDF via `env`
+    # multi-GPU: pkexec strips the env, so pass the selected card's BDF via command line
     bdf = getattr(getattr(parent, "gpu", None), "bdf", None)
-    if getattr(parent, "_multi_gpu", False) and bdf:
-        cmd += ["/usr/bin/env", f"ARC_GPU_BDF={bdf}"]
+    if getattr(parent, "_multi_gpu", False) and bdf and args[0] in HELPER_PATHS:
+        # Add --gpu option to pass BDF directly (pkexec strips env vars)
+        args = args + ["--gpu", bdf]
     cmd += args
     try:
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True)

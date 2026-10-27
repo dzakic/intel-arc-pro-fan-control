@@ -6,15 +6,40 @@
 #   sudo xe-gpu-tune set  [--power-w N] [--clk-min MHZ] [--clk-max MHZ]
 #   sudo xe-gpu-tune reset                 # back to hardware defaults
 #   sudo xe-gpu-tune boot                  # apply /etc/xe-gpu-tune.conf (used by systemd)
+#   sudo xe-gpu-tune --gpu BDF set ...     # multi-GPU: specify GPU by BDF
 set -uo pipefail
 
-# --- find the xe GPU's sysfs (honour ARC_GPU_BDF for multi-GPU) ---
+# --- parse --gpu option (before subcommand) ---
+GPU_BDF=""
+SUBCOMMAND=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --gpu)
+      [ $# -lt 2 ] && { echo "error: --gpu requires BDF argument"; exit 1; }
+      GPU_BDF="$2"
+      shift 2
+      ;;
+    set|reset|boot|show)
+      SUBCOMMAND="$1"
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+# --- find the xe GPU's sysfs (honour ARC_GPU_BDF or --gpu for multi-GPU) ---
 CARD=""
 for c in /sys/class/drm/card*; do
   [ -e "$c/device/driver" ] || continue
   [ "$(basename "$(readlink -f "$c/device/driver")")" = "xe" ] || continue
-  if [ -n "${ARC_GPU_BDF:-}" ]; then
-    [ "$(basename "$(readlink -f "$c/device")")" = "$ARC_GPU_BDF" ] || continue
+  bdf=$(basename "$(readlink -f "$c/device")")
+  # Check both --gpu argument and ARC_GPU_BDF env var
+  if [ -n "${GPU_BDF:-}" ]; then
+    [ "$bdf" = "$GPU_BDF" ] || continue
+  elif [ -n "${ARC_GPU_BDF:-}" ]; then
+    [ "$bdf" = "$ARC_GPU_BDF" ] || continue
   fi
   CARD="$c"; break
 done
@@ -48,7 +73,14 @@ set_clk_min() { echo "$1" > "$GT/min_freq" && echo "  min clock -> ${1} MHz"; }
 set_clk_max() { echo "$1" > "$GT/max_freq" && echo "  max clock -> ${1} MHz"; }
 set_profile() { [ -e "$GT/power_profile" ] && echo "$1" > "$GT/power_profile" && echo "  power profile -> ${1}"; }
 
-case "${1:-show}" in
+persist_kv(){
+  CONF=/etc/xe-gpu-tune.conf
+  mkdir -p "$(dirname "$CONF")"; touch "$CONF"
+  grep -vE "^$1=" "$CONF" 2>/dev/null > "$CONF.tmp" || true
+  echo "$1=$2" >> "$CONF.tmp"; mv "$CONF.tmp" "$CONF"
+}
+
+case "${SUBCOMMAND:-show}" in
   show) show ;;
   reset)
     echo "$(rd $GT/rp0_freq)" > "$GT/max_freq"
@@ -57,13 +89,12 @@ case "${1:-show}" in
     [ -n "$HW" ] && [ -e "$HW/power1_cap" ] && { def=$(rd "$HW/power1_rated_max" 2>/dev/null); echo "${def:-0}" > "$HW/power1_cap"; }
     echo "reset to hardware defaults:"; show ;;
   set)
-    shift
     while [ $# -gt 0 ]; do
       case "$1" in
-        --power-w) set_power_w "$2"; shift 2;;
-        --clk-min) set_clk_min "$2"; shift 2;;
-        --clk-max) set_clk_max "$2"; shift 2;;
-        --profile) set_profile "$2"; shift 2;;
+        --power-w) set_power_w "$2"; persist_kv POWER_W "$2"; shift 2;;
+        --clk-min) set_clk_min "$2"; persist_kv CLK_MIN "$2"; shift 2;;
+        --clk-max) set_clk_max "$2"; persist_kv CLK_MAX "$2"; shift 2;;
+        --profile) set_profile "$2"; persist_kv PROFILE "$2"; shift 2;;
         *) echo "unknown arg: $1"; exit 1;;
       esac
     done
@@ -79,5 +110,5 @@ case "${1:-show}" in
     [ -n "$CLK_MAX" ] && set_clk_max "$CLK_MAX"
     [ -n "$PROFILE" ] && set_profile "$PROFILE"
     echo "boot tuning applied:"; show ;;
-  *) echo "usage: xe-gpu-tune {show|set [--power-w N] [--clk-min MHZ] [--clk-max MHZ] [--profile base|power_saving]|reset|boot}"; exit 1;;
+  *) echo "usage: xe-gpu-tune {show|set [--power-w N] [--clk-min MHZ] [--clk-max MHZ] [--profile base|power_saving]|reset|boot [--gpu BDF]}"; exit 1;;
 esac

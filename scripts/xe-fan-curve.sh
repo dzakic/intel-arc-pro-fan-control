@@ -7,6 +7,7 @@
 #   sudo xe-fan-curve max                  # full speed
 #   sudo xe-fan-curve set  T:PWM  T:PWM ...  # custom curve (temp °C : pwm 0-255)
 #   sudo xe-fan-curve show                 # print current mode + curve + RPM
+#   sudo xe-fan-curve --gpu BDF set ...    # multi-GPU: specify GPU by BDF
 #
 # Example (fan off till 45C, then ramp):
 #   sudo xe-fan-curve set 45:80 55:120 65:170 75:210 85:255
@@ -19,12 +20,25 @@
 set -euo pipefail
 
 # --- locate the xe hwmon directory by name (honour ARC_GPU_BDF for multi-GPU) ---
+# --- parse --gpu option ---
+GPU_BDF=""
+for arg in "$@"; do
+  if [ "$arg" = "--gpu" ]; then
+    shift
+    GPU_BDF="${1:-}"
+    shift
+  fi
+done
+
 HWMON=""
 for d in /sys/class/hwmon/hwmon*; do
   [ -r "$d/name" ] || continue
   [ "$(cat "$d/name")" = "xe" ] || continue
-  if [ -n "${ARC_GPU_BDF:-}" ]; then
-    hbdf=$(basename "$(readlink -f "$d/device" 2>/dev/null)" 2>/dev/null)
+  hbdf=$(basename "$(readlink -f "$d/device" 2>/dev/null)" 2>/dev/null)
+  # Check both --gpu argument and ARC_GPU_BDF env var
+  if [ -n "${GPU_BDF:-}" ]; then
+    [ "$hbdf" = "$GPU_BDF" ] || continue
+  elif [ -n "${ARC_GPU_BDF:-}" ]; then
     [ "$hbdf" = "$ARC_GPU_BDF" ] || continue
   fi
   HWMON="$d"; break

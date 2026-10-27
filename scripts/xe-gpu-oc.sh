@@ -18,7 +18,22 @@ _detect_bdf(){
   done
   return 1
 }
-GPU="${ARC_GPU_BDF:-$(_detect_bdf || echo 0000:03:00.0)}"
+# --- parse --gpu option ---
+GPU_BDF=""
+for arg in "$@"; do
+  if [ "$arg" = "--gpu" ]; then
+    shift
+    GPU_BDF="${1:-}"
+    shift
+  fi
+done
+
+# Use --gpu > ARC_GPU_BDF > auto-detect
+if [ -n "${GPU_BDF:-}" ]; then
+  GPU="$GPU_BDF"
+else
+  GPU="${ARC_GPU_BDF:-$(_detect_bdf || echo 0000:03:00.0)}"
+fi
 DEV="/sys/bus/pci/devices/$GPU"
 OC="$DEV/tile0/gt0/oc/vf_curve"
 MS="$DEV/tile0/gt0/oc/mem_speed"
