@@ -336,9 +336,11 @@ class XeGpu:
         return _int(self.temp_node())  # degC, or None
 
     def read_clk_min(self):
-        # Read persisted min clock from /etc/xe-gpu-tune.conf (or 0 if not set)
+        # Read persisted min clock from per-GPU config file
         try:
-            with open("/etc/xe-gpu-tune.conf", "r") as f:
+            # /etc/xe-gpu-tune-cardX.conf where X is card number
+            card_num = self.card.split("card")[1]
+            with open(f"/etc/xe-gpu-tune-card{card_num}.conf", "r") as f:
                 for line in f:
                     if line.startswith("CLK_MIN="):
                         val = line.strip().split("=", 1)[1]
@@ -348,9 +350,10 @@ class XeGpu:
         return 0
 
     def read_clk_max(self):
-        # Read persisted max clock from /etc/xe-gpu-tune.conf (or 0 if not set)
+        # Read persisted max clock from per-GPU config file
         try:
-            with open("/etc/xe-gpu-tune.conf", "r") as f:
+            card_num = self.card.split("card")[1]
+            with open(f"/etc/xe-gpu-tune-card{card_num}.conf", "r") as f:
                 for line in f:
                     if line.startswith("CLK_MAX="):
                         val = line.strip().split("=", 1)[1]

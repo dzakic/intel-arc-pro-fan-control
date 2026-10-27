@@ -76,10 +76,12 @@ set_clk_max() { echo "$1" > "$GT/max_freq" && echo "  max clock -> ${1} MHz"; }
 set_profile() { [ -e "$GT/power_profile" ] && echo "$1" > "$GT/power_profile" && echo "  power profile -> ${1}"; }
 
 persist_kv(){
-  CONF=/etc/xe-gpu-tune.conf
+  local key="$1" val="$2"
+  # Per-GPU config: use GPU BDF in filename (e.g., /etc/xe-gpu-tune-card1.conf)
+  local CONF="/etc/xe-gpu-tune-${CARD##*/}.conf"
   mkdir -p "$(dirname "$CONF")"; touch "$CONF"
-  grep -vE "^$1=" "$CONF" 2>/dev/null > "$CONF.tmp" || true
-  echo "$1=$2" >> "$CONF.tmp"; mv "$CONF.tmp" "$CONF"
+  grep -vE "^$key=" "$CONF" 2>/dev/null > "$CONF.tmp" || true
+  echo "$key=$val" >> "$CONF.tmp"; mv "$CONF.tmp" "$CONF"
 }
 
 case "${SUBCOMMAND:-show}" in
@@ -89,6 +91,8 @@ case "${SUBCOMMAND:-show}" in
     echo "$(rd $GT/rpn_freq)" > "$GT/min_freq"   # note: hw default min; some firmwares idle-floor higher
     # power: restore the rated default if the card exposes one, else 0 = uncapped (the shipped default)
     [ -n "$HW" ] && [ -e "$HW/power1_cap" ] && { def=$(rd "$HW/power1_rated_max" 2>/dev/null); echo "${def:-0}" > "$HW/power1_cap"; }
+    # Clean up per-GPU config file for this GPU
+    rm -f "/etc/xe-gpu-tune-${CARD##*/}.conf"
     echo "reset to hardware defaults:"; show ;;
   set)
     while [ $# -gt 0 ]; do
@@ -102,7 +106,8 @@ case "${SUBCOMMAND:-show}" in
     done
     echo "applied:"; show ;;
   boot)
-    CONF=/etc/xe-gpu-tune.conf
+    # Per-GPU config: /etc/xe-gpu-tune-cardX.conf where X is the card number
+    CONF="/etc/xe-gpu-tune-${CARD##*/}.conf"
     [ -r "$CONF" ] || { echo "no $CONF; nothing to apply"; exit 0; }
     POWER_W=""; CLK_MIN=""; CLK_MAX=""; PROFILE=""
     # shellcheck disable=SC1090
