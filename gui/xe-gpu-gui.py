@@ -1497,9 +1497,6 @@ class VoltageCurveView(Gtk.Box):
         dlg.set_extra_child(entry)
         dlg.add_response("cancel", "Cancel")
         dlg.add_response("save", "Save")
-        dlg.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
-        dlg.set_default_response("save"); dlg.set_close_response("cancel")
-
         def on_resp(d, resp):
             name = entry.get_text().strip()
             if resp == "save" and name:
@@ -1847,8 +1844,6 @@ class VoltageCurveView(Gtk.Box):
                   "aren't changed — stock is applied only for the duration of the test." + note))
         dlg.add_response("cancel", "Cancel")
         dlg.add_response("go", "Benchmark stock")
-        dlg.set_response_appearance("go", Adw.ResponseAppearance.SUGGESTED)
-        dlg.set_default_response("go"); dlg.set_close_response("cancel")
         dlg.connect("response", lambda d, r: self._bench_stock_go() if r == "go" else None)
         dlg.present()
 
@@ -1872,8 +1867,6 @@ class VoltageCurveView(Gtk.Box):
                  "this can take a few minutes. Proceed?")
         dlg.add_response("cancel", "Just the stability test")
         dlg.add_response("setup", "Set up & benchmark")
-        dlg.set_response_appearance("setup", Adw.ResponseAppearance.SUGGESTED)
-        dlg.set_default_response("setup"); dlg.set_close_response("cancel")
         def resp(d, r):
             if r == "setup":
                 self._setup_benchmark()
@@ -1917,8 +1910,6 @@ class VoltageCurveView(Gtk.Box):
                  "the test?")
         dlg.add_response("cancel", "Cancel")
         dlg.add_response("install", "Install & Test")
-        dlg.set_response_appearance("install", Adw.ResponseAppearance.SUGGESTED)
-        dlg.set_default_response("install"); dlg.set_close_response("cancel")
         dlg.connect("response",
                     lambda d, r: self._install_loader() if r == "install" else None)
         dlg.present()
@@ -2200,7 +2191,6 @@ class VoltageCurveView(Gtk.Box):
     def _result_dialog(self, heading, body):
         dlg = Adw.MessageDialog(transient_for=self.window, heading=heading, body=body)
         dlg.add_response("ok", "Close")
-        dlg.set_default_response("ok"); dlg.set_close_response("ok")
         dlg.present()
 
     def _result_table_dialog(self, heading, summary, rows, has_base, footer="", offer_stock=False):
@@ -2230,9 +2220,7 @@ class VoltageCurveView(Gtk.Box):
         dlg.add_response("ok", "Close")
         if offer_stock:
             dlg.add_response("stock", "Benchmark stock now")
-            dlg.set_response_appearance("stock", Adw.ResponseAppearance.SUGGESTED)
             dlg.connect("response", lambda d, r: self._bench_stock_go() if r == "stock" else None)
-        dlg.set_default_response("ok"); dlg.set_close_response("ok")
         dlg.present()
 
     BENCH_PATH = os.path.expanduser("~/.config/xe-gpu-arc/benchmarks.json")
