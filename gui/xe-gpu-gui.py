@@ -2461,6 +2461,8 @@ class Window(Adw.ApplicationWindow):
 
         self.gpu = XeGpu(self.gpus[0]["card"])
         self._build_content()
+        # Startup doesn't route through _on_gpu_change, so mark the first GPU active.
+        self._mark_gpu_selected(0)
 
     def _build_content(self):
         # (re)build all tabs for the currently-selected GPU. Called on GPU switch.
@@ -2494,6 +2496,12 @@ class Window(Adw.ApplicationWindow):
         self._tick()              # first async snapshot
         self._tick_id = GLib.timeout_add_seconds(REFRESH_SECONDS, self._tick)
 
+    def _mark_gpu_selected(self, i):
+        # Highlight the active GPU button; reset the others to the default style.
+        for btn in self.gpu_buttons:
+            btn.remove_css_class("suggested-action")
+        self.gpu_buttons[i].add_css_class("suggested-action")
+
     def _on_gpu_change(self, dd, idx=None):
         # Handle button click (dd=None, idx is int) or dropdown (dd is dropdown, idx=None)
         if idx is not None:
@@ -2509,10 +2517,7 @@ class Window(Adw.ApplicationWindow):
             # Reload the curve editor to show the new GPU's current curve
             if hasattr(self, 'editor'):
                 self.editor._reload()
-            # Update button styles
-            for btn in self.gpu_buttons:
-                btn.remove_css_class("suggested-action")
-            self.gpu_buttons[i].add_css_class("suggested-action")
+            self._mark_gpu_selected(i)
             self.toast(f"Now controlling GPU{i} ({self.gpus[i]['bdf']})")
 
     def toast(self, msg, ms=2500):
