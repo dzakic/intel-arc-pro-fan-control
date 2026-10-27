@@ -18,6 +18,11 @@ TMIN, TMAX = 20, 100          # curve editor temperature axis (°C)
 MAX_POINTS = 10
 
 CSS = b"""
+button.gpu-btn { border-radius: 6px; padding: 4px 10px; transition: all 150ms ease; }
+button.gpu-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 6px alpha(#000,0.2); }
+button.gpu-btn.suggested-action { background: @accent_color; color: @window_fg_color; font-weight: 600; border: 2px solid @accent_color; }
+button.gpu-btn.suggested-action:hover { transform: translateY(-1px); box-shadow: 0 4px 12px alpha(@accent_color,0.5); }
+
 .card2 { background: @card_bg_color; border-radius: 12px; padding: 12px 14px; }
 .section { font-weight: bold; opacity: 0.7; font-size: 0.80em; letter-spacing:.04em; }
 .big { font-size: 1.7em; font-weight: 800; }
@@ -450,14 +455,12 @@ def build_metrics(sample):
         Metric("freq_act", "GPU Actual Frequency", "MHz",
                lambda d: {"text": _num(d["clocks"].get("act")), "val": d["clocks"].get("act")},
                spark=True, fixed=(0, rp0), default=False, group="Clocks", icon="freq"),
-        Metric("power_gpu", "GPU Power", "W",
-               lambda d: {"text": (f"{d['draw_pkg']:.0f}" if d.get("draw_pkg") is not None else "—"),
-                          "val": d.get("draw_pkg")}, spark=True, default=False, group="Power", icon="power"),
-        Metric("power_pct", "GPU Power Percent", "%",
-               lambda d: ({"text": str(round(d["draw_card"] / d["power"]["cap_w"] * 100)),
-                           "val": round(d["draw_card"] / d["power"]["cap_w"] * 100)}
-                          if d.get("draw_card") is not None and d["power"].get("cap_w") else {"text": "—"}),
-               spark=True, fixed=(0, 100), default=False, group="Power", icon="power"),
+        Metric("power", "GPU Power", "W",
+               lambda d: ({"text": f"{d['draw_pkg']:.0f}",
+                           "val": d.get("draw_pkg"),
+                           "sub": (f"{round(d['draw_card'] / d['power']['cap_w'] * 100)}% of cap" if d.get("draw_card") is not None and d['power'].get('cap_w') else None)}
+                          if d.get("draw_pkg") is not None else {"text": "—"}),
+               spark=True, default=False, group="Power", icon="power"),
         Metric("fan_pct", "GPU Fan Duty", "%",
                lambda d: {"text": (str(round((d["fan"].get("duty") or 0) / 255 * 100))
                                    if d["fan"].get("duty") is not None else "—"),
@@ -467,17 +470,13 @@ def build_metrics(sample):
                spark=True, fixed=(0, 100), default=False, group="Fan", icon="fan"),
         Metric("temp_pct", "GPU Temperature Percent", "%", _temp_pct,
                spark=True, fixed=(0, 100), default=False, group="Temperature", icon="temp"),
-        Metric("vram_used", "VRAM Used", "GiB",
+        Metric("vram", "VRAM", "GiB",
                lambda d: ({"text": f"{d['vmem']['used'] / 1073741824:.1f}",
-                           "val": d["vmem"]["used"] / 1073741824}
+                           "val": d["vmem"]["used"] / 1073741824,
+                           "sub": f"{round(d['vmem']['used'] / d['vmem']['total'] * 100)}%"}
                           if d.get("vmem") else {"text": "—", "sub": "needs xe-gpu-vram.service"}),
                spark=True, fixed=(0, ((sample.get("vmem") or {}).get("total") or 25_769_803_776) / 1073741824),
                default=False, group="VRAM", icon="vram"),
-        Metric("vram_pct", "VRAM Usage", "%",
-               lambda d: ({"text": str(round(d["vmem"]["used"] / d["vmem"]["total"] * 100)),
-                           "val": round(d["vmem"]["used"] / d["vmem"]["total"] * 100)}
-                          if d.get("vmem") else {"text": "—", "sub": "needs xe-gpu-vram.service"}),
-               spark=True, fixed=(0, 100), default=False, group="VRAM", icon="vram"),
     ]
 
 
@@ -819,7 +818,8 @@ class CurveEditor(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.gpu = gpu
         self.window = window
-        self.points = gpu.read_curve()
+        # First try to load saved curve from config file
+        self.points = self._load_saved_curve()
         self.applied = [list(p) for p in self.points]   # what's currently on the GPU
         self.cur_pkg = gpu.pkg_temp()   # cached; updated by the window refresh (no per-frame read)
         self._drag = None
@@ -852,6 +852,8 @@ class CurveEditor(Gtk.Box):
         self.preset.set_tooltip_text("Load a preset fan curve")
         self.preset.connect("notify::selected", self._on_preset)
         bar.append(self.preset)
+        bar.append(icon_button("document-save-symbolic", "Save current curve to /etc/xe-fan-curve.conf (persists across reboots)",
+                               lambda *_: self._save_curve(), label="Save"))
         bar.append(icon_button("list-add-symbolic", "Add a curve point", self._add, label="Point"))
         bar.append(icon_button("view-refresh-symbolic", "Reload the curve currently on the GPU",
                                lambda *_: (self._reload()), label="Reload"))
@@ -1020,6 +1022,23 @@ class CurveEditor(Gtk.Box):
         self.area.queue_draw()
         self._mark()
 
+    def _save_curve(self):
+        # Save current curve to /etc/xe-fan-curve.conf
+        bdf = getattr(self.gpu, "bdf", None)
+        args = ["/usr/local/bin/xe-fan-curve", "save"]
+        if bdf:
+            args = ["/usr/local/bin/xe-fan-curve", "--gpu", bdf, "save"]
+        try:
+            import subprocess
+            result = subprocess.run(["pkexec"] + args, capture_output=True, text=True)
+            if result.returncode == 0:
+                self.window.toast("Fan curve saved to /etc/xe-fan-curve.conf")
+                self._mark()
+            else:
+                self.window.toast(f"Save failed: {result.stderr.strip()}")
+        except Exception as e:
+            self.window.toast(f"Save failed: {str(e)}")
+
     def _on_preset(self, dd, _):
         i = dd.get_selected()
         if i > 0:
@@ -1029,6 +1048,27 @@ class CurveEditor(Gtk.Box):
             self._mark()
             self.window.toast(f"Loaded “{name}” preset — press Apply to write it")
             dd.set_selected(0)
+
+    def _load_saved_curve(self):
+        """Load saved curve from /etc/xe-fan-curve.conf"""
+        import re
+        try:
+            with open("/etc/xe-fan-curve.conf", "r") as f:
+                content = f.read()
+            match = re.search(r'CURVE="([^"]*)"', content)
+            if match:
+                curve_str = match.group(1).strip()
+                pairs = curve_str.split()
+                pts = []
+                for pair in pairs:
+                    if ':' in pair:
+                        t, p = pair.split(':')
+                        pts.append([int(t), int(p)])
+                if pts:
+                    return pts
+        except (FileNotFoundError, ValueError, Exception):
+            pass
+        return self.gpu.read_curve()
 
     def _reload(self):
         self.points = self.gpu.read_curve()
@@ -1072,11 +1112,12 @@ class CurveEditor(Gtk.Box):
 
     def _apply(self, *_):
         pts = sorted(self.points)
-        args = ["xe-fan-curve", "set"] + [f"{int(t)}:{int(p)}" for t, p in pts]
-        run_priv(args, self.window)
+        pairs = [f"{int(t)}:{int(p)}" for t, p in pts]
+        # Shared config: this single curve goes to ALL xe GPUs (not just the selected one).
+        run_priv(["xe-fan-curve", "set-all"] + pairs, self.window)
         self.applied = [list(p) for p in pts]
         self._mark()
-        self.window.toast(f"Applying fan curve ({len(pts)} points)…")
+        self.window.toast(f"Applying fan curve ({len(pts)} points) to all GPUs…")
 
 
 # ---------------------------------------------------------------- overclock
@@ -2398,12 +2439,24 @@ class Window(Adw.ApplicationWindow):
         if self._multi_gpu:
             gi = Gtk.Image(icon_name="video-display-symbolic")
             hb.pack_start(gi)
-            self.gpu_dd = Gtk.DropDown.new_from_strings([g["label"] for g in self.gpus])
-            self.gpu_dd.set_tooltip_text("Choose which GPU to monitor and control")
-            self.gpu_dd.connect("notify::selected", self._on_gpu_change)
-            hb.pack_start(self.gpu_dd)
+            self.gpu_btn_box = Gtk.Box(spacing=4)
+            self.gpu_btn_box.set_halign(Gtk.Align.START)
+            self.gpu_buttons = []
+            for i, gpu in enumerate(self.gpus):
+                # Multi-line tooltip: PCI slot (BDF) + device id (vendor:device) + drm card.
+                bdf = gpu["bdf"] or "-"
+                dev = gpu["id"] or "-"
+                card = os.path.basename(gpu["card"])
+                tip = f"Device: {dev}\nPCI: {bdf}\nDRM: {card}"
+                btn = Gtk.Button(label=f"GPU{i}", tooltip_text=tip)
+                btn.connect("clicked", lambda b, idx=i: self._on_gpu_change(None, idx))
+                self.gpu_btn_box.append(btn)
+                self.gpu_buttons.append(btn)
+            hb.pack_start(self.gpu_btn_box)
         else:
             self.gpu_dd = None
+            self.gpu_btn_box = None
+            self.gpu_buttons = []
         hb.pack_start(icon_button("view-refresh-symbolic", "Refresh readings now",
                                   lambda *_: self.refresh()))
         self._tv.add_top_bar(hb)
@@ -2453,12 +2506,26 @@ class Window(Adw.ApplicationWindow):
         self._tick()              # first async snapshot
         self._tick_id = GLib.timeout_add_seconds(REFRESH_SECONDS, self._tick)
 
-    def _on_gpu_change(self, dd, _):
-        i = dd.get_selected()
+    def _on_gpu_change(self, dd, idx=None):
+        # Handle button click (dd=None, idx is int) or dropdown (dd is dropdown, idx=None)
+        if idx is not None:
+            i = idx
+        elif dd is not None:
+            i = dd.get_selected()
+        else:
+            return
+        
         if 0 <= i < len(self.gpus):
             self.gpu = XeGpu(self.gpus[i]["card"])
             self._build_content()
-            self.toast(f"Now controlling {self.gpus[i]['label']} ({self.gpus[i]['id']})")
+            # Reload the curve editor to show the new GPU's current curve
+            if hasattr(self, 'editor'):
+                self.editor._reload()
+            # Update button styles
+            for btn in self.gpu_buttons:
+                btn.remove_css_class("suggested-action")
+            self.gpu_buttons[i].add_css_class("suggested-action")
+            self.toast(f"Now controlling GPU{i} ({self.gpus[i]['bdf']})")
 
     def toast(self, msg, ms=2500):
         # timeout=0 keeps Adw from auto-dismissing; we dismiss manually for a precise 2.5s.
@@ -2712,11 +2779,18 @@ class Window(Adw.ApplicationWindow):
         prev = self._energy_prev.get(key)
         self._energy_prev[key] = (energy_uj, now)
         if prev is None:
-            return None
+            # First sample - return 0
+            return 0
         de = energy_uj - prev[0]; dt = (now - prev[1]) / 1e6
         if dt <= 0 or de < 0:
-            return None
-        return (de / 1e6) / dt                    # J / s = W
+            # Invalid reading - reuse last valid value
+            return getattr(self, '_power_last', {}).get(key, 0)
+        watts = (de / 1e6) / dt                    # J / s = W
+        # Store last valid reading
+        if not hasattr(self, '_power_last'):
+            self._power_last = {}
+        self._power_last[key] = watts
+        return watts
 
     def _apply(self, data):
         self._reading = False

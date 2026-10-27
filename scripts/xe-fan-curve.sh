@@ -129,15 +129,45 @@ case "${1:-show}" in
     [ "$applied" -ge "$n" ] || { echo "error: only $applied of $n points were accepted"; exit 1; }
     echo "applied custom curve:"; show
     ;;
+  set-all)
+    # Apply the SAME curve to every xe GPU (shared config) — one helper call sets them all.
+    shift
+    [ "$#" -ge 1 ] || { echo "give at least one T:PWM pair"; exit 1; }
+    for h in /sys/class/hwmon/hwmon*; do
+      [ -r "$h/name" ] || continue
+      [ "$(cat "$h/name" 2>/dev/null)" = "xe" ] || continue
+      [ -e "$h/pwm1_enable" ] || continue
+      bdf=$(basename "$(readlink -f "$h/device" 2>/dev/null)" 2>/dev/null) || continue
+      "$0" --gpu "$bdf" set "$@" >/dev/null
+    done
+    ;;
+  save)
+    # Persist current curve to /etc/xe-fan-curve.conf
+    echo "Saving current fan curve..."
+    # Read current curve
+    saved=""
+    for i in $(seq 1 "$NPOINTS"); do
+      t=$(cat "$HWMON/pwm1_auto_point${i}_temp" 2>/dev/null)
+      p=$(cat "$HWMON/pwm1_auto_point${i}_pwm" 2>/dev/null)
+      [ -n "$t" ] && saved="$saved $(( t/1000 )):$p"
+    done
+    # Write to config file
+    echo "# Fan curve persisted at $(date)" > /etc/xe-fan-curve.conf
+    echo "CURVE="$saved"" >> /etc/xe-fan-curve.conf
+    echo "Saved to /etc/xe-fan-curve.conf"
+    echo "$saved" | xargs echo "Current curve:"
+    ;;
   boot)
     # Applied at boot by the systemd service. Reads CURVE="T:PWM ..." from the conf.
     CONF=/etc/xe-fan-curve.conf
-    [ -r "$CONF" ] || { echo "no $CONF; leaving fan on auto-stock"; echo 2 > "$HWMON/pwm1_enable"; exit 0; }
+    [ -r "$CONF" ] || { echo "no $CONF; leaving fan on auto-stock"; exit 0; }
     # shellcheck disable=SC1090
     CURVE=""; . "$CONF"
-    [ -n "$CURVE" ] || { echo "empty CURVE in $CONF; auto-stock"; echo 2 > "$HWMON/pwm1_enable"; exit 0; }
-    # reuse 'set' with the configured pairs
-    exec "$0" set $CURVE
+    [ -n "$CURVE" ] || { echo "empty CURVE in $CONF; auto-stock"; exit 0; }
+    
+    # Same curve to every xe GPU (shared config) — canonical path, matches the
+    # GUI's save -> set-all behaviour.
+    exec "$0" set-all $CURVE
     ;;
-  *) echo "usage: xe-fan-curve {show|auto|max|set T:PWM ...|boot}"; exit 1 ;;
+  *) echo "usage: xe-fan-curve {show|auto|max|set T:PWM ...|set-all T:PWM...|boot}"; exit 1 ;;
 esac
