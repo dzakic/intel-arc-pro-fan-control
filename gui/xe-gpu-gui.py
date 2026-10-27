@@ -1352,8 +1352,11 @@ class VoltageCurveView(Gtk.Box):
         cl = self.gpu.clocks()
         clo = cl.get("rpn") or 400
         chi = cl.get("rp0") or 2400
-        self.cmin_applied = int(cl.get("min") or clo)
-        self.cmax_applied = int(cl.get("max") or chi)
+        # Read persisted values from config file for min/max clocks
+        cmin = self.gpu.read_clk_min() or cl.get("min", 0)
+        cmax = self.gpu.read_clk_max() or cl.get("max", 0)
+        self.cmin_applied = int(cmin) if cmin else int(cl.get("min") or clo)
+        self.cmax_applied = int(cmax) if cmax else int(cl.get("max") or chi)
         self.f_cmin = SliderField(
             pgrid, pr, "go-first-symbolic", "Min clock", clo, chi, 50, self.cmin_applied, "MHz",
             tip="Idle clock floor. Lower (e.g. 400) drops idle power/heat; still boosts under load.",
