@@ -22,6 +22,8 @@ while [ $# -gt 0 ]; do
     set|reset|boot|show)
       SUBCOMMAND="$1"
       shift
+      # Stop parsing after subcommand so arguments can be processed by subcommand handler
+      break
       ;;
     *)
       shift
