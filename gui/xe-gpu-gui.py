@@ -346,7 +346,7 @@ class XeGpu:
                 for line in f:
                     if line.startswith("CLK_MIN="):
                         val = line.strip().split("=", 1)[1]
-                        return _int(val) if val else 0
+                        return int(val) if val else 0
         except Exception:
             pass
         return 0
@@ -360,7 +360,7 @@ class XeGpu:
                 for line in f:
                     if line.startswith("CLK_MAX="):
                         val = line.strip().split("=", 1)[1]
-                        return _int(val) if val else 0
+                        return int(val) if val else 0
         except Exception:
             pass
         return 0
