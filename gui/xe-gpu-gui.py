@@ -774,8 +774,8 @@ def run_priv(args, parent, after=None):
     # The GUI always operates on one specific GPU, so always pass --gpu when available.
     bdf = getattr(getattr(parent, "gpu", None), "bdf", None)
     if bdf and orig_cmd in HELPER_PATHS:
-        # Add --gpu option to pass BDF directly
-        args = args + ["--gpu", bdf]
+        # Insert --gpu BEFORE the subcommand (the xe-* scripts parse --gpu before the subcommand)
+        args = [args[0], "--gpu", bdf] + list(args[1:])
     cmd += args
     try:
         p = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True)
