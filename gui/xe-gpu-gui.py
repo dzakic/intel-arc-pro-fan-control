@@ -767,12 +767,13 @@ HELPER_PATHS = {"xe-fan-curve": "/usr/local/bin/xe-fan-curve",
 
 def run_priv(args, parent, after=None):
     # pkexec sanitizes PATH (often no /usr/local/bin) -> use absolute paths.
-    args = [HELPER_PATHS.get(args[0], args[0])] + list(args[1:])
+    orig_cmd = args[0]
+    args = [HELPER_PATHS.get(orig_cmd, orig_cmd)] + list(args[1:])
     cmd = ["pkexec"]
     # Pass the selected card's BDF via --gpu (pkexec strips env vars)
     # The GUI always operates on one specific GPU, so always pass --gpu when available.
     bdf = getattr(getattr(parent, "gpu", None), "bdf", None)
-    if bdf and args[0] in HELPER_PATHS:
+    if bdf and orig_cmd in HELPER_PATHS:
         # Add --gpu option to pass BDF directly
         args = args + ["--gpu", bdf]
     cmd += args
