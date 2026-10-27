@@ -763,10 +763,11 @@ def run_priv(args, parent, after=None):
     # pkexec sanitizes PATH (often no /usr/local/bin) -> use absolute paths.
     args = [HELPER_PATHS.get(args[0], args[0])] + list(args[1:])
     cmd = ["pkexec"]
-    # multi-GPU: pkexec strips the env, so pass the selected card's BDF via command line
+    # Pass the selected card's BDF via --gpu (pkexec strips env vars)
+    # The GUI always operates on one specific GPU, so always pass --gpu when available.
     bdf = getattr(getattr(parent, "gpu", None), "bdf", None)
-    if getattr(parent, "_multi_gpu", False) and bdf and args[0] in HELPER_PATHS:
-        # Add --gpu option to pass BDF directly (pkexec strips env vars)
+    if bdf and args[0] in HELPER_PATHS:
+        # Add --gpu option to pass BDF directly
         args = args + ["--gpu", bdf]
     cmd += args
     try:
