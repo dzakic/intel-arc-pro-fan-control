@@ -335,6 +335,30 @@ class XeGpu:
     def read_temp_limit(self):
         return _int(self.temp_node())  # degC, or None
 
+    def read_clk_min(self):
+        # Read persisted min clock from /etc/xe-gpu-tune.conf (or 0 if not set)
+        try:
+            with open("/etc/xe-gpu-tune.conf", "r") as f:
+                for line in f:
+                    if line.startswith("CLK_MIN="):
+                        val = line.strip().split("=", 1)[1]
+                        return _int(val) if val else 0
+        except Exception:
+            pass
+        return 0
+
+    def read_clk_max(self):
+        # Read persisted max clock from /etc/xe-gpu-tune.conf (or 0 if not set)
+        try:
+            with open("/etc/xe-gpu-tune.conf", "r") as f:
+                for line in f:
+                    if line.startswith("CLK_MAX="):
+                        val = line.strip().split("=", 1)[1]
+                        return _int(val) if val else 0
+        except Exception:
+            pass
+        return 0
+
 
 PRESETS = {
     "Silent":     [[40, 0], [55, 45], [70, 100], [82, 170], [90, 255]],
@@ -1564,10 +1588,14 @@ class VoltageCurveView(Gtk.Box):
             if cap:
                 self.pow_applied = int(cap); self.f_pow.value = cap
         cl = self.gpu.clocks()
-        if cl.get("min"):
-            self.cmin_applied = int(cl["min"]); self.f_cmin.value = cl["min"]
-        if cl.get("max"):
-            self.cmax_applied = int(cl["max"]); self.f_cmax.value = cl["max"]
+        # Prefer persisted values from /etc/xe-gpu-tune.conf over sysfs for min/max clocks
+        # since they represent what the user last set (sysfs may reflect defaults on switch)
+        cmin = self.gpu.read_clk_min() or cl.get("min", 0)
+        cmax = self.gpu.read_clk_max() or cl.get("max", 0)
+        if cmin:
+            self.cmin_applied = int(cmin); self.f_cmin.value = cmin
+        if cmax:
+            self.cmax_applied = int(cmax); self.f_cmax.value = cmax
         if self.profile_dd is not None:
             prof = self.gpu.power_profile()
             opts = (prof or {}).get("options") or []
