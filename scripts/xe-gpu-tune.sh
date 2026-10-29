@@ -16,6 +16,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --gpu)
       [ $# -lt 2 ] && { echo "error: --gpu requires BDF argument"; exit 1; }
+      GPU_BFD="$2"
       GPU_BDF="$2"
       shift 2
       ;;
@@ -35,7 +36,7 @@ done
 CARD=""
 for c in /sys/class/drm/card*; do
   [ -e "$c/device/driver" ] || continue
-  [ "$(basename "$(readlink -f "$c/device/driver")")" = "xe" ] || continue
+  [ "$(basename "$(readlink -f "$c/device/driver")" 2>/dev/null)" = "xe" ] || continue
   bdf=$(basename "$(readlink -f "$c/device")")
   # Check both --gpu argument and ARC_GPU_BDF env var
   if [ -n "${GPU_BDF:-}" ]; then
@@ -54,7 +55,8 @@ HW=""; HW_ANY=""
 for d in /sys/class/hwmon/hwmon*; do
   [ -r "$d/name" ] && [ "$(cat "$d/name")" = "xe" ] || continue
   [ -z "$HW_ANY" ] && HW_ANY="$d"
-  if [ "$(basename "$(readlink -f "$d/device" 2>/dev/null)" 2>/dev/null)" = "$CBDF" ]; then HW="$d"; break; fi
+  hwm_bdf=$(basename "$(readlink -f "$d/device" 2>/dev/null)" 2>/dev/null)
+  if [ "$hwm_bdf" = "$CBDF" ]; then HW="$d"; break; fi
 done
 [ -n "$HW" ] || HW="$HW_ANY"
 
@@ -77,7 +79,7 @@ set_profile() { [ -e "$GT/power_profile" ] && echo "$1" > "$GT/power_profile" &&
 
 persist_kv(){
   local key="$1" val="$2"
-  # Per-GPU config: use GPU BDF in filename (e.g., /etc/xe-gpu-tune-card1.conf)
+  # Per-GPU config: /etc/xe-gpu-tune-cardX.conf (X is card number extracted from CARD path)
   local CONF="/etc/xe-gpu-tune-${CARD##*/}.conf"
   mkdir -p "$(dirname "$CONF")"; touch "$CONF"
   grep -vE "^$key=" "$CONF" 2>/dev/null > "$CONF.tmp" || true
@@ -107,15 +109,48 @@ case "${SUBCOMMAND:-show}" in
     echo "applied:"; show ;;
   boot)
     # Per-GPU config: /etc/xe-gpu-tune-cardX.conf where X is the card number
-    CONF="/etc/xe-gpu-tune-${CARD##*/}.conf"
-    [ -r "$CONF" ] || { echo "no $CONF; nothing to apply"; exit 0; }
     POWER_W=""; CLK_MIN=""; CLK_MAX=""; PROFILE=""
-    # shellcheck disable=SC1090
-    . "$CONF"
-    [ -n "$POWER_W" ] && set_power_w "$POWER_W"
-    [ -n "$CLK_MIN" ] && set_clk_min "$CLK_MIN"
-    [ -n "$CLK_MAX" ] && set_clk_max "$CLK_MAX"
-    [ -n "$PROFILE" ] && set_profile "$PROFILE"
-    echo "boot tuning applied:"; show ;;
+    if [ -n "${GPU_BDF:-}" ] || [ -n "${ARC_GPU_BDF:-}" ]; then
+      # Single-GPU mode (--gpu or ARC_GPU_BDF): use the CARD already detected above
+      CONF="/etc/xe-gpu-tune-${CARD##*/}.conf"
+      [ -r "$CONF" ] || { echo "no $CONF; nothing to apply"; exit 0; }
+      # shellcheck disable=SC1090
+      . "$CONF"
+      [ -n "$POWER_W" ] && set_power_w "$POWER_W"
+      [ -n "$CLK_MIN" ] && set_clk_min "$CLK_MIN"
+      [ -n "$CLK_MAX" ] && set_clk_max "$CLK_MAX"
+      [ -n "$PROFILE" ] && set_profile "$PROFILE"
+      echo "boot tuning applied:"; show
+    else
+      # Multi-GPU mode (no --gpu): loop over all xe GPUs and apply each config
+      for c in /sys/class/drm/card*; do
+        [ -e "$c/device/driver" ] || continue
+        driver=$(readlink -f "$c/device/driver" 2>/dev/null)
+        [ "$(basename "$driver" 2>/dev/null)" = "xe" ] || continue
+        _gt="$c/device/tile0/gt0/freq0"
+        [ -d "$_gt" ] || continue
+        _cn=$(basename "$c" | sed 's/card//')
+        _conf="/etc/xe-gpu-tune-${_cn}.conf"
+        [ -r "$_conf" ] || continue
+        _pw=""; _cmn=""; _cmx=""; _prf=""
+        # shellcheck disable=SC1090
+        . "$_conf"
+        # set clocks via the per-GPU sysfs node
+        [ -n "$_cmn" ] && echo "$_cmn" > "$_gt/min_freq" 2>/dev/null
+        [ -n "$_cmx" ] && echo "$_cmx" > "$_gt/max_freq" 2>/dev/null
+        # match hwmon by BDF (same logic as the CARD detection above)
+        _bdf=$(basename "$(readlink -f "$c/device")")
+        _hw=""
+        for _d in /sys/class/hwmon/hwmon*; do
+          [ -r "$_d/name" ] && [ "$(cat "$_d/name" 2>/dev/null)" = "xe" ] || continue
+          _hwm_bdf=$(basename "$(readlink -f "$_d/device" 2>/dev/null)" 2>/dev/null)
+          [ "$_hwm_bdf" = "$_bdf" ] && _hw="$_d" && break
+        done
+        [ -n "$_pw" ] && [ -n "$_hw" ] && echo "$_pw" > "$_hw/power1_cap" 2>/dev/null
+        [ -n "$_prf" ] && { echo "$_prf" > "$c/device/power_dlb_config" 2>/dev/null || echo "$_prf" > "$c/device/power_context" 2>/dev/null || true; }
+      done
+      echo "boot tuning applied to all GPUs:"; show
+    fi
+    ;;
   *) echo "usage: xe-gpu-tune {show|set [--power-w N] [--clk-min MHZ] [--clk-max MHZ] [--profile base|power_saving]|reset|boot [--gpu BDF]}"; exit 1;;
 esac
