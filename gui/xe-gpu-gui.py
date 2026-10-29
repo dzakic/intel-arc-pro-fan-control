@@ -18,13 +18,16 @@ TMIN, TMAX = 20, 100          # curve editor temperature axis (°C)
 MAX_POINTS = 10
 
 CSS = b"""
-button.gpu-btn { border-radius: 6px; padding: 4px 10px; transition: all 150ms ease; }
-button.gpu-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 6px alpha(#000,0.2); }
-button.gpu-btn.suggested-action { background: @accent_color; color: @window_fg_color; font-weight: 600; border: 2px solid @accent_color; }
-button.gpu-btn.suggested-action:hover { transform: translateY(-1px); box-shadow: 0 4px 12px alpha(@accent_color,0.5); }
+.gpu-btn { border-radius: 6px; padding: 4px 10px; transition: all 150ms ease; }
+.gpu-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 6px alpha(#000,0.2); }
+.gpu-btn.suggested-action { background: @accent_color; color: @window_fg_color; font-weight: 600; border: 2px solid @accent_color; }
+.gpu-btn.suggested-action:hover { transform: translateY(-1px); box-shadow: 0 4px 12px alpha(@accent_color,0.5); }
 
 .card2 { background: @card_bg_color; border-radius: 12px; padding: 12px 14px; }
 .section { font-weight: bold; opacity: 0.7; font-size: 0.80em; letter-spacing:.04em; }
+.specitem-label { opacity: 0.70; font-size: 0.74em; letter-spacing:.03em; }
+.specitem-icon { opacity: 0.45; }
+.specitem-val { font-weight: 700; font-size: 0.90em; }
 .big { font-size: 1.7em; font-weight: 800; }
 .dim { opacity: 0.60; font-size: 0.86em; }
 .chip { border-radius: 9px; padding: 8px 8px; background: alpha(@window_fg_color,0.05);
@@ -832,6 +835,11 @@ def kv(grid, row, key, val_widget, tip=None):
     return val_widget
 
 
+def _has_icon(name):
+    """Check whether a symbolic icon is available in the current icon theme."""
+    return Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).has_icon(name)
+
+
 def icon_button(icon, tooltip, cb, label=None, css=None):
     b = Gtk.Button(tooltip_text=tooltip)
     if label:
@@ -1526,8 +1534,8 @@ class VoltageCurveView(Gtk.Box):
         return self.prof_names[i] if 0 <= i < len(self.prof_names) else None
 
     def _prof_save(self, *_):
-        dlg = Adw.MessageDialog(transient_for=self.window, heading="Save profile",
-                                body="Name this overclock profile (voltage / memory / temp):")
+        dlg = Adw.AlertDialog(parent=self.window, title="Save profile",
+                            heading="Name this overclock profile (voltage / memory / temp):")
         entry = Gtk.Entry(placeholder_text="e.g. daily, gaming, quiet", activates_default=True)
         dlg.set_extra_child(entry)
         dlg.add_response("cancel", "Cancel")
@@ -1876,11 +1884,11 @@ class VoltageCurveView(Gtk.Box):
         note = ("" if not self._stock_uncalibrated else
                 "\n\nThis card has an overclock persisted and hasn't been seen at stock, so "
                 "this run also calibrates what 'stock' means for it.")
-        dlg = Adw.MessageDialog(
-            transient_for=self.window, heading="Benchmark stock baseline?",
-            body=("Runs the full benchmark at this card's stock settings to record the "
-                  "baseline that overclocks are compared against. Your applied settings "
-                  "aren't changed — stock is applied only for the duration of the test." + note))
+        dlg = Adw.AlertDialog(
+            parent=self.window, title="Benchmark stock baseline?",
+            heading=("Runs the full benchmark at this card's stock settings to record the "
+                   "baseline that overclocks are compared against. Your applied settings "
+                   "aren't changed — stock is applied only for the duration of the test." + note))
         dlg.add_response("cancel", "Cancel")
         dlg.add_response("go", "Benchmark stock")
         dlg.connect("response", lambda d, r: self._bench_stock_go() if r == "go" else None)
@@ -1898,9 +1906,9 @@ class VoltageCurveView(Gtk.Box):
             os.path.isdir(os.path.expanduser("~/ovbench/model"))
 
     def _prompt_setup_benchmark(self):
-        dlg = Adw.MessageDialog(
-            transient_for=self.window, heading="Set up benchmarking?",
-            body="The benchmark measures VRAM bandwidth and real LLM tokens/sec on the "
+        dlg = Adw.AlertDialog(
+            parent=self.window, title="Set up benchmarking?",
+            heading="The benchmark measures VRAM bandwidth and real LLM tokens/sec on the "
                  "GPU. Setting it up (one-time) installs the benchmark tools "
                  "(clpeak + Intel OpenCL) and downloads a small ~1 GB language model — "
                  "this can take a few minutes. Proceed?")
@@ -1942,10 +1950,10 @@ class VoltageCurveView(Gtk.Box):
         return False
 
     def _prompt_install_loader(self):
-        dlg = Adw.MessageDialog(
-            transient_for=self.window, heading="Install stability-test tool?",
-            body="The stability test drives the GPU with a load generator, which "
-                 "isn’t installed for this session yet. Install it now and run "
+        dlg = Adw.AlertDialog(
+            parent=self.window, title="Install stability-test tool?",
+            heading="The stability test drives the GPU with a load generator, which "
+                 "isn't installed for this session yet. Install it now and run "
                  "the test?")
         dlg.add_response("cancel", "Cancel")
         dlg.add_response("install", "Install & Test")
@@ -2228,12 +2236,12 @@ class VoltageCurveView(Gtk.Box):
         return rows
 
     def _result_dialog(self, heading, body):
-        dlg = Adw.MessageDialog(transient_for=self.window, heading=heading, body=body)
+        dlg = Adw.AlertDialog(parent=self.window, title=heading, body=body)
         dlg.add_response("ok", "Close")
         dlg.present()
 
     def _result_table_dialog(self, heading, summary, rows, has_base, footer="", offer_stock=False):
-        dlg = Adw.MessageDialog(transient_for=self.window, heading=heading, body=summary)
+        dlg = Adw.AlertDialog(parent=self.window, title=heading, body=summary)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         grid = Gtk.Grid(column_spacing=18, row_spacing=6)
         hdr = ["Metric", "This run"] + (["Stock", "Δ"] if has_base else [])
@@ -2475,7 +2483,10 @@ class Window(Adw.ApplicationWindow):
                 dev = gpu["id"] or "-"
                 card = os.path.basename(gpu["card"])
                 tip = f"Device: {dev}\nPCI: {bdf}\nDRM: {card}"
-                btn = Gtk.Button(label=f"GPU{i}", tooltip_text=tip)
+                btn = Gtk.Button(tooltip_text=tip)
+                btn.add_css_class("gpu-btn")
+                btn.set_child(Adw.ButtonContent(icon_name="computer-chip-symbolic",
+                                              label=f"GPU{i}"))
                 btn.connect("clicked", lambda b, idx=i: self._on_gpu_change(None, idx))
                 self.gpu_btn_box.append(btn)
                 self.gpu_buttons.append(btn)
@@ -2537,9 +2548,11 @@ class Window(Adw.ApplicationWindow):
 
     def _mark_gpu_selected(self, i):
         # Highlight the active GPU button; reset the others to the default style.
-        for btn in self.gpu_buttons:
-            btn.remove_css_class("suggested-action")
-        self.gpu_buttons[i].add_css_class("suggested-action")
+        for j, btn in enumerate(self.gpu_buttons):
+            if j == i:
+                btn.add_css_class("suggested-action")
+            else:
+                btn.remove_css_class("suggested-action")
 
     def _on_gpu_change(self, dd, idx=None):
         # Handle button click (dd=None, idx is int) or dropdown (dd is dropdown, idx=None)
@@ -2679,13 +2692,20 @@ class Window(Adw.ApplicationWindow):
         flow = Gtk.FlowBox(column_spacing=24, row_spacing=8, homogeneous=False,
                            min_children_per_line=2, max_children_per_line=8,
                            selection_mode=Gtk.SelectionMode.NONE)
+        icons = {"device": "computer-chip-symbolic", "vram": "drive-harddisk-symbolic", "cap": "power-profile-power-saver-symbolic",
+                "limit": "power-profile-balanced-symbolic", "clk": "go-first-symbolic", "hw": "go-last-symbolic",
+                "profile": "power-profile-performance-symbolic", "fan": "fan-power-symbolic" if _has_icon("fan-power") else "view-refresh-symbolic",
+                "power_lim": "dialog-warning-symbolic", "temp_lim": "dialog-warning-symbolic", "volt_lim": "dialog-warning-symbolic"}
         rows = [("device", "Device"), ("vram", "VRAM"), ("cap", "Power cap"),
                 ("limit", "Power limit (I1)"), ("clk", "Clock limits"), ("hw", "Hardware range"),
                 ("profile", "Power profile"), ("fan", "Fan mode"), ("power_lim", "Power limited"),
                 ("temp_lim", "Temp limited"), ("volt_lim", "Voltage limited")]
         for key, label in rows:
             item = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-            k = Gtk.Label(label=label, xalign=0); k.add_css_class("specitem-label")
+            k = Gtk.Box(spacing=4); k.set_hexpand(True); k.add_css_class("specitem-label")
+            kgi = Gtk.Image(icon_name=icons.get(key, "dialog-info-symbolic")); kgi.add_css_class("specitem-icon")
+            klb = Gtk.Label(label=label, xalign=0); klb.set_hexpand(True)
+            k.append(kgi); k.append(klb)
             v = Gtk.Label(label="—", xalign=0); v.add_css_class("specitem-val")
             item.append(k); item.append(v)
             flow.append(item); self.spec_rows[key] = v
