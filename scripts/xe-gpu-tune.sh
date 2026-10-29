@@ -129,12 +129,14 @@ case "${SUBCOMMAND:-show}" in
         [ "$(basename "$driver" 2>/dev/null)" = "xe" ] || continue
         _gt="$c/device/tile0/gt0/freq0"
         [ -d "$_gt" ] || continue
-        _cn=$(basename "$c" | sed 's/card//')
+        _cn=$(basename "$c")
         _conf="/etc/xe-gpu-tune-${_cn}.conf"
         [ -r "$_conf" ] || continue
         _pw=""; _cmn=""; _cmx=""; _prf=""
         # shellcheck disable=SC1090
         . "$_conf"
+        # Config file uses CLK_MIN/CLK_MAX/POWER_W/PROFILE; map to our loop vars
+        _pw="${POWER_W:-}"; _cmn="${CLK_MIN:-}"; _cmx="${CLK_MAX:-}"; _prf="${PROFILE:-}"
         # set clocks via the per-GPU sysfs node
         [ -n "$_cmn" ] && echo "$_cmn" > "$_gt/min_freq" 2>/dev/null
         [ -n "$_cmx" ] && echo "$_cmx" > "$_gt/max_freq" 2>/dev/null
