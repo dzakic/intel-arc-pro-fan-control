@@ -858,6 +858,10 @@ class CurveEditor(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.gpu = gpu
         self.window = window
+        # Check if fan control is available
+        self.fan_available = self.gpu.hwmon and os.path.exists(os.path.join(self.gpu.hwmon, "pwm1_enable"))
+        if not self.fan_available:
+            print(f"Fan control not available - no pwm1_enable in {self.gpu.hwmon}")
         # First try to load saved curve from config file
         self.points = self._load_saved_curve()
         self.applied = [list(p) for p in self.points]   # what's currently on the GPU
@@ -913,7 +917,10 @@ class CurveEditor(Gtk.Box):
         bar.append(self.hint)
         self.apply_btn = icon_button("emblem-ok-symbolic",
                                      "Apply this curve (manual mode) — asks for authorization",
-                                     self._apply, label="Apply", css="suggested-action")
+                                     self._apply, label="Apply" if self.fan_available else "Fan patch unavailable", css="suggested-action")
+        if not self.fan_available:
+            self.apply_btn.set_tooltip_text("Fan control requires the xe-fan-curve kernel patch (pwm1_enable sysfs)")
+            self.apply_btn.set_sensitive(False)
         bar.append(self.apply_btn)
         self.append(bar)
         note = Gtk.Label(
