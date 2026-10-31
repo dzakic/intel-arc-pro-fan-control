@@ -148,6 +148,12 @@ class XeGpu:
     def present(self):
         return bool(self.hwmon or self.card)
 
+    @property
+    def fan_available(self):
+        if not self.hwmon:
+            return False
+        return os.path.exists(os.path.join(self.hwmon, "pwm1_enable"))
+
     def identity(self):
         if not self.card:
             return {"card": "-", "pci": "-", "id": "-"}
@@ -858,8 +864,7 @@ class CurveEditor(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.gpu = gpu
         self.window = window
-        # Check if fan control is available
-        self.fan_available = self.gpu.hwmon and os.path.exists(os.path.join(self.gpu.hwmon, "pwm1_enable"))
+        self.fan_available = self.gpu.fan_available
         if not self.fan_available:
             print(f"Fan control not available - no pwm1_enable in {self.gpu.hwmon}")
         # First try to load saved curve from config file
@@ -2537,6 +2542,10 @@ class Window(Adw.ApplicationWindow):
         curve_wrap.append(self.editor)
         p2 = self.stack.add_titled(curve_wrap, "curve", "Fan Control")
         p2.set_icon_name("power-profile-balanced-symbolic")
+        # Disable Fan Control tab if kernel patch not available
+        if not self.gpu.fan_available:
+            p2.set_sensitive(False)
+            p2.set_tooltip_text("Fan curve control requires xe-fan-curve kernel patch (series 168027)")
 
         self.oc_view = None
         if self.gpu.oc_available:
