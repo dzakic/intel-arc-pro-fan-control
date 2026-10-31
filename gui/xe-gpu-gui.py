@@ -2537,15 +2537,13 @@ class Window(Adw.ApplicationWindow):
         p1 = self.stack.add_titled(self._build_dashboard(), "dash", "Dashboard")
         p1.set_icon_name("utilities-system-monitor-symbolic")
 
-        self.editor = CurveEditor(self.gpu, self)
-        curve_wrap = Gtk.Box(margin_start=12, margin_end=12, margin_top=12, margin_bottom=12)
-        curve_wrap.append(self.editor)
-        p2 = self.stack.add_titled(curve_wrap, "curve", "Fan Control")
-        p2.set_icon_name("power-profile-balanced-symbolic")
-        # Disable Fan Control tab if kernel patch not available
-        if not self.gpu.fan_available:
-            p2.set_sensitive(False)
-            p2.set_tooltip_text("Fan curve control requires xe-fan-curve kernel patch (series 168027)")
+        # Add Fan Control tab only if kernel patch is available
+        if self.gpu.fan_available:
+            self.editor = CurveEditor(self.gpu, self)
+            curve_wrap = Gtk.Box(margin_start=12, margin_end=12, margin_top=12, margin_bottom=12)
+            curve_wrap.append(self.editor)
+            p2 = self.stack.add_titled(curve_wrap, "curve", "Fan Control")
+            p2.set_icon_name("power-profile-balanced-symbolic")
 
         self.oc_view = None
         if self.gpu.oc_available:
