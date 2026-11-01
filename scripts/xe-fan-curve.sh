@@ -151,9 +151,9 @@ case "${1:-show}" in
       p=$(cat "$HWMON/pwm1_auto_point${i}_pwm" 2>/dev/null)
       [ -n "$t" ] && saved="$saved $(( t/1000 )):$p"
     done
-    # Write to config file
+    # Write to config file (quoted so sourcing works: CURVE="40:0 55:46 ...")
     echo "# Fan curve persisted at $(date)" > /etc/xe-fan-curve.conf
-    echo "CURVE="$saved"" >> /etc/xe-fan-curve.conf
+    echo "CURVE=\"$saved\"" >> /etc/xe-fan-curve.conf
     echo "Saved to /etc/xe-fan-curve.conf"
     echo "$saved" | xargs echo "Current curve:"
     ;;
