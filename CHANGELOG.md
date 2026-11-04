@@ -2,6 +2,21 @@
 
 All notable changes to this project. Dates are ISO (UTC).
 
+## v1.1.3 - 2026-11-24
+
+### Fixed
+- **Sleep-resume fan hook was installed to a directory systemd never scans.**
+  `install.sh` put the hook at `/etc/systemd/system-sleep/xe-fan-resume.sh`,
+  but `systemd-sleep` only executes hooks from the vendor directory
+  `/usr/lib/systemd/system-sleep/` (true in systemd v229 through v259, per
+  source and man pages, despite `/etc/systemd/system-sleep` appearing in many
+  guides). The hook therefore silently never ran, and the fan curve had to be
+  re-applied by hand after every suspend. `install.sh` now installs the hook
+  to `/usr/lib/systemd/system-sleep/xe-fan-resume` and migrates/removes the
+  old `/etc` copy and the deprecated `xe-fan-resume.service` unit
+  (`WantedBy=resume.target` only triggers on resume from hibernation, never
+  on suspend-to-RAM wake).
+
 ## v1.1.2 - 2026-07-09
 
 ### Fixed

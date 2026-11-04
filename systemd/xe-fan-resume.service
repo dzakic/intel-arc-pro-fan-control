@@ -1,0 +1,15 @@
+[Unit]
+Description=Re-apply saved fan curve after resume from suspend (DEPRECATED - use sleep hook)
+After=suspend.target
+Documentation=https://github.com/...
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/xe-fan-curve boot
+
+[Install]
+WantedBy=resume.target
+# NOTE: This service alone does not work for suspend/resume because resume.target
+# is only triggered for hibernation, not suspend-to-RAM. The actual wake-up handling
+# is now done via the system-sleep hook /usr/lib/systemd/system-sleep/xe-fan-resume
+# (installed by install.sh; note systemd-sleep only scans that vendor dir, not /etc)

@@ -55,6 +55,28 @@ if [ -f gui/xe-gpu-gui.desktop ] && [ -n "$USER_HOME" ]; then
   echo "  installed $APPS/xe-gpu-gui.desktop"
 fi
 
+# Sleep hook script to re-apply fan curve after resume from suspend.
+# IMPORTANT: systemd-sleep only scans the VENDOR directory /usr/lib/systemd/system-sleep
+# (confirmed in systemd source + man pages, v229 through v259). /etc/systemd/system-sleep
+# is NOT scanned by upstream systemd, despite appearing in many guides — a hook installed
+# there silently never runs. Keep it in the vendor dir, like hdparm/nvidia/sysstat's hooks.
+if [ -f systemd/xe-fan-resume.sh ]; then
+  install -m755 systemd/xe-fan-resume.sh /usr/lib/systemd/system-sleep/xe-fan-resume
+  echo "  installed /usr/lib/systemd/system-sleep/xe-fan-resume"
+  # migration: remove a hook installed to the never-executed /etc location
+  rm -f /etc/systemd/system-sleep/xe-fan-resume.sh
+fi
+
+# migration: remove the deprecated xe-fan-resume.service if a previous setup installed
+# it (WantedBy=resume.target only fires on resume from HIBERNATION, never on
+# suspend-to-RAM wake, so it can never do its job; the system-sleep hook replaced it)
+if [ -f /etc/systemd/system/xe-fan-resume.service ] && command -v systemctl >/dev/null 2>&1; then
+  systemctl disable xe-fan-resume.service >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/xe-fan-resume.service
+  systemctl daemon-reload
+  echo "  removed deprecated xe-fan-resume.service (replaced by the system-sleep hook)"
+fi
+
 # VRAM-usage exporter service (exposes only the VRAM figure from root-only debugfs
 # to /run/xe-gpu-vram so the GUI can show a live VRAM-usage metric)
 if [ -f systemd/xe-gpu-vram.service ] && command -v systemctl >/dev/null 2>&1; then
