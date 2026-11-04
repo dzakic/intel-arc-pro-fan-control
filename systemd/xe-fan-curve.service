@@ -7,8 +7,10 @@ Wants=multi-user.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# Retry briefly in case the hwmon device isn't ready the instant we run
-ExecStart=/bin/sh -c 'for i in $(seq 1 15); do /usr/local/bin/xe-fan-curve boot && exit 0; sleep 2; done; exit 1'
+# The xe driver registers its hwmon device at a variable time after boot, so wait for
+# the device to actually exist (up to ~120s) before retrying. On multi-GPU boxes the
+# hwmon name (hwmonN) can differ boot to boot; just wait for any xe hwmon to appear.
+ExecStart=/bin/sh -c 'for w in $(seq 1 60); do ls /sys/class/hwmon/hwmon*/name 2>/dev/null | xargs -r grep -lq xe 2>/dev/null && break; sleep 2; done; for i in $(seq 1 30); do /usr/local/bin/xe-fan-curve boot && exit 0; sleep 2; done; exit 1'
 # On stop (shutdown), hand the fan back to the GPU's safe auto-stock table
 ExecStop=/usr/local/bin/xe-fan-curve auto
 
